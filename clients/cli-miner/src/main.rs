@@ -1,0 +1,422 @@
+//! Equium reference CLI miner.
+//!
+//! Polling-based loop (M3 minimum): fetch config → solve current challenge →
+//! submit `mine` ix → wait for confirmation → repeat. Upgrades to WebSocket
+//! `accountSubscribe` planned for M4 once browser miner needs the same plumbing.
+//!
+//! Usage:
+//!   equium-miner --rpc-url http://127.0.0.1:8899 \
+//!                --keypair ~/.config/solana/id.json \
+//!                --max-blocks 100
+
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::time::{Duration, Instant};
+
+use anchor_lang::prelude::AccountMeta;
+use anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas};
+use anchor_spl::associated_token::get_associated_token_address_with_program_id;
+use anyhow::{anyhow, Context, Result};
+use clap::Parser;
+use equihash_core::challenge::{build_input, solution_hash};
+use equihash_core::solver::solve;
+use equihash_core::target::hash_under_target;
+use equium::state::{EquiumConfig, CONFIG_SEED, VAULT_SEED};
+use rand::RngCore;
+use solana_client::rpc_client::RpcClient;
+use solana_sdk::commitment_config::CommitmentConfig;
+use solana_sdk::compute_budget::ComputeBudgetInstruction;
+use solana_sdk::instruction::Instruction;
+use solana_sdk::pubkey::Pubkey;
+use solana_sdk::signature::{read_keypair_file, Keypair, Signer};
+use solana_sdk::system_program;
+use solana_sdk::sysvar;
+use solana_sdk::transaction::Transaction;
+
+#[derive(Parser, Debug)]
+#[command(version, about = "Equium reference CPU miner")]
+struct Args {
+    /// RPC endpoint URL.
+    #[arg(long, default_value = "http://127.0.0.1:8899")]
+    rpc_url: String,
+
+    /// Path to a keypair JSON for the miner wallet.
+    #[arg(long)]
+    keypair: PathBuf,
+
+    /// Override the program ID. Defaults to the value compiled into `equium`.
+    #[arg(long)]
+    program_id: Option<String>,
+
+    /// Stop after N successful blocks (0 = run forever).
+    #[arg(long, default_value_t = 0u64)]
+    max_blocks: u64,
+
+    /// Compute-unit limit per `mine` tx. Plan: 1.4M.
+    #[arg(long, default_value_t = 1_400_000u32)]
+    cu_limit: u32,
+
+    /// Cap on nonce attempts per round before giving up and re-fetching state.
+    #[arg(long, default_value_t = 4096u64)]
+    max_nonces_per_round: u64,
+}
+
+// ANSI styling shortcuts. Colors are picked to look good against either a
+// warm cream (recording) or default dark terminal. The palette is intentionally
+// simple — magenta/rose for brand, gold for highlights, sage for wins.
+const C_RESET: &str = "\x1b[0m";
+const C_DIM: &str = "\x1b[2m";
+const C_BOLD: &str = "\x1b[1m";
+const C_ROSE: &str = "\x1b[35m"; // brand
+const C_ROSE_B: &str = "\x1b[1;35m";
+const C_GOLD: &str = "\x1b[33m";
+const C_GOLD_B: &str = "\x1b[1;33m";
+const C_SAGE: &str = "\x1b[32m";
+const C_SAGE_B: &str = "\x1b[1;32m";
+const C_TEAL: &str = "\x1b[36m";
+const C_GRAY: &str = "\x1b[90m";
+
+const LOGO: &str = r#"
+   ███████╗ ██████╗ ██╗   ██╗██╗██╗   ██╗███╗   ███╗
+   ██╔════╝██╔═══██╗██║   ██║██║██║   ██║████╗ ████║
+   █████╗  ██║   ██║██║   ██║██║██║   ██║██╔████╔██║
+   ██╔══╝  ██║▄▄ ██║██║   ██║██║██║   ██║██║╚██╔╝██║
+   ███████╗╚██████╔╝╚██████╔╝██║╚██████╔╝██║ ╚═╝ ██║
+   ╚══════╝ ╚══▀▀═╝  ╚═════╝ ╚═╝ ╚═════╝ ╚═╝     ╚═╝"#;
+
+const RULE: &str = "   ────────────────────────────────────────────────────";
+
+fn main() -> Result<()> {
+    // Initialize a quiet env_logger only for crate-internal modules; the
+    // miner itself uses println! for fully-controlled formatting.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"))
+        .format(|buf, record| {
+            use std::io::Write;
+            writeln!(buf, "{}{}{}  {}", C_GRAY, record.level(), C_RESET, record.args())
+        })
+        .init();
+
+    let args = Args::parse();
+
+    let program_id: Pubkey = match &args.program_id {
+        Some(s) => Pubkey::from_str(s).context("invalid --program-id")?,
+        None => equium::ID,
+    };
+    let miner_kp = read_keypair_file(&args.keypair)
+        .map_err(|e| anyhow!("read keypair {}: {}", args.keypair.display(), e))?;
+    let miner = miner_kp.pubkey();
+
+    let rpc = RpcClient::new_with_commitment(args.rpc_url.clone(), CommitmentConfig::confirmed());
+
+    let (config_pda, _) = Pubkey::find_program_address(&[CONFIG_SEED], &program_id);
+    let (vault_pda, _) = Pubkey::find_program_address(&[VAULT_SEED], &program_id);
+
+    let network_label = network_label_from_url(&args.rpc_url);
+
+    print_boot(&miner, &program_id, network_label);
+
+    let mut blocks_mined = 0u64;
+    let started_at = Instant::now();
+
+    // The mint determines which token program (classic SPL or Token-2022)
+    // to talk to. Read it once at startup; if the mint is ever changed
+    // off-chain (it shouldn't be once authority is revoked) the miner can
+    // be restarted.
+    let token_program_id = {
+        let cfg = fetch_config(&rpc, &config_pda)
+            .with_context(|| format!("fetch config at {}", config_pda))?;
+        let mint_acct = rpc.get_account(&cfg.mint).with_context(|| {
+            format!("fetch mint {} for token program detection", cfg.mint)
+        })?;
+        mint_acct.owner
+    };
+    let mut current_height: u64 = u64::MAX;
+    let mut try_in_round: u32 = 0;
+    let mut total_nonces: u64 = 0;
+    let mut total_reward_base: u64 = 0;
+
+    loop {
+        let cfg = fetch_config(&rpc, &config_pda)
+            .with_context(|| format!("fetch config at {}", config_pda))?;
+        let miner_ata = derive_ata(&miner, &cfg.mint, &token_program_id);
+
+        if cfg.block_height != current_height {
+            current_height = cfg.block_height;
+            try_in_round = 0;
+            println!();
+            println!(
+                "   {}round #{}{}   {}reward {} EQM{}   {}target 0x{}…{}",
+                C_BOLD, cfg.block_height, C_RESET,
+                C_DIM, format_reward(cfg.current_epoch_reward), C_RESET,
+                C_DIM, hex::encode(&cfg.current_target[..4]), C_RESET,
+            );
+            println!("{}{}{}", C_GRAY, RULE, C_RESET);
+        }
+
+        let solve_started = Instant::now();
+        let input = build_input(
+            &cfg.current_challenge,
+            &miner.to_bytes(),
+            cfg.block_height,
+        );
+        let mut rng = rand::thread_rng();
+        let mut counter = 0u64;
+        let solution = solve(cfg.equihash_n, cfg.equihash_k, &input, || {
+            counter += 1;
+            if counter > args.max_nonces_per_round {
+                return None;
+            }
+            let mut nonce = [0u8; 32];
+            rng.fill_bytes(&mut nonce);
+            Some(nonce)
+        });
+
+        let solution = match solution {
+            Ok(s) => s,
+            Err(_) => {
+                println!("   {}solver gave up; refreshing{}", C_GRAY, C_RESET);
+                std::thread::sleep(Duration::from_millis(500));
+                continue;
+            }
+        };
+        let solve_ms = solve_started.elapsed().as_millis() as u64;
+        try_in_round += 1;
+        total_nonces = total_nonces.saturating_add(counter);
+
+        let session_secs = started_at.elapsed().as_secs_f64().max(0.001);
+        let hashrate = total_nonces as f64 / session_secs;
+
+        // Off-chain target check — saves an RPC roundtrip for solutions
+        // that the on-chain verifier would reject as AboveTarget.
+        let cand_hash = solution_hash(&solution.soln_indices, &input);
+        if !hash_under_target(&cand_hash, &cfg.current_target) {
+            println!(
+                "     {}· try #{}{}   {}above target{}        {}{}ms{}   {}{}{}",
+                C_GRAY, try_in_round, C_RESET,
+                C_DIM, C_RESET,
+                C_DIM, solve_ms, C_RESET,
+                C_GOLD, fmt_hashrate(hashrate), C_RESET,
+            );
+            continue;
+        }
+
+        match submit_mine(
+            &rpc,
+            &miner_kp,
+            &program_id,
+            &config_pda,
+            &cfg,
+            &vault_pda,
+            &miner_ata,
+            &token_program_id,
+            &solution.nonce,
+            solution.soln_indices.clone(),
+            args.cu_limit,
+        ) {
+            Ok(sig) => {
+                blocks_mined += 1;
+                total_reward_base = total_reward_base.saturating_add(cfg.current_epoch_reward);
+                println!(
+                    "     {}✓ MINED!{}   {}+{} EQM{}     {}try #{}{}   {}{}ms{}   {}{}{}",
+                    C_SAGE_B, C_RESET,
+                    C_BOLD, format_reward(cfg.current_epoch_reward), C_RESET,
+                    C_DIM, try_in_round, C_RESET,
+                    C_DIM, solve_ms, C_RESET,
+                    C_GOLD_B, fmt_hashrate(hashrate), C_RESET,
+                );
+                println!("       {}sig {}{}", C_GRAY, short_sig(&sig), C_RESET);
+                println!();
+                println!(
+                    "   {}total mined{}  {}{} EQM{}   {}·{}   {}blocks{}  {}{}{}   {}·{}   {}uptime{}  {}{}{}",
+                    C_DIM, C_RESET,
+                    C_BOLD, format_reward(total_reward_base), C_RESET,
+                    C_GRAY, C_RESET,
+                    C_DIM, C_RESET, C_BOLD, blocks_mined, C_RESET,
+                    C_GRAY, C_RESET,
+                    C_DIM, C_RESET, C_BOLD, fmt_uptime(session_secs), C_RESET,
+                );
+            }
+            Err(e) => {
+                let reason = classify_submit_err(&e.to_string());
+                println!(
+                    "     {}· try #{}{}   {}{}{}        {}{}ms{}   {}{}{}",
+                    C_GRAY, try_in_round, C_RESET,
+                    C_DIM, reason, C_RESET,
+                    C_DIM, solve_ms, C_RESET,
+                    C_GOLD, fmt_hashrate(hashrate), C_RESET,
+                );
+                std::thread::sleep(Duration::from_millis(200));
+                continue;
+            }
+        }
+
+        if args.max_blocks > 0 && blocks_mined >= args.max_blocks {
+            let elapsed = started_at.elapsed().as_secs_f64();
+            println!();
+            println!(
+                "   {}session complete{}  ·  {} blocks  ·  avg latency {:.1}s  ·  {}",
+                C_ROSE_B, C_RESET,
+                args.max_blocks,
+                elapsed / blocks_mined as f64,
+                fmt_hashrate(hashrate),
+            );
+            return Ok(());
+        }
+    }
+}
+
+fn print_boot(miner: &Pubkey, program: &Pubkey, network: &str) {
+    println!("{}{}{}", C_ROSE_B, LOGO, C_RESET);
+    println!(
+        "   {}cpu-mineable on solana{}                            {}$EQM ⛏{}",
+        C_DIM, C_RESET, C_GOLD_B, C_RESET
+    );
+    println!();
+    println!("{}{}{}", C_GRAY, RULE, C_RESET);
+    println!("   {}miner{}     {}{}{}", C_DIM, C_RESET, C_TEAL, short_pk(miner), C_RESET);
+    println!("   {}program{}   {}{}{}", C_DIM, C_RESET, C_TEAL, short_pk(program), C_RESET);
+    println!("   {}network{}   {}{}{}", C_DIM, C_RESET, C_TEAL, network, C_RESET);
+    println!("{}{}{}", C_GRAY, RULE, C_RESET);
+}
+
+fn network_label_from_url(url: &str) -> &'static str {
+    if url.contains("mainnet") {
+        "solana mainnet"
+    } else if url.contains("devnet") {
+        "solana devnet"
+    } else if url.contains("testnet") {
+        "solana testnet"
+    } else if url.contains("127.0.0.1") || url.contains("localhost") {
+        "solana localnet"
+    } else {
+        "solana custom"
+    }
+}
+
+fn fmt_hashrate(hashes_per_sec: f64) -> String {
+    if hashes_per_sec >= 1000.0 {
+        format!("{:.1} kH/s", hashes_per_sec / 1000.0)
+    } else {
+        format!("{:.1} H/s", hashes_per_sec)
+    }
+}
+
+fn fmt_uptime(seconds: f64) -> String {
+    let total = seconds as u64;
+    let h = total / 3600;
+    let m = (total % 3600) / 60;
+    let s = total % 60;
+    if h > 0 {
+        format!("{}:{:02}:{:02}", h, m, s)
+    } else {
+        format!("{}:{:02}", m, s)
+    }
+}
+
+fn short_pk(pk: &Pubkey) -> String {
+    let s = pk.to_string();
+    format!("{}…{}", &s[..4], &s[s.len() - 4..])
+}
+
+fn short_sig(s: &str) -> String {
+    if s.len() <= 12 {
+        return s.to_string();
+    }
+    format!("{}…{}", &s[..6], &s[s.len() - 6..])
+}
+
+fn format_reward(base_units: u64) -> String {
+    let whole = base_units / 1_000_000;
+    let frac = base_units % 1_000_000;
+    if frac == 0 {
+        format!("{}", whole)
+    } else {
+        format!("{}.{:06}", whole, frac).trim_end_matches('0').to_string()
+    }
+}
+
+/// Map a submit error string to a single-word reason.
+fn classify_submit_err(s: &str) -> &'static str {
+    if s.contains("custom program error: 0x1773") || s.contains("AboveTarget") {
+        "above target"
+    } else if s.contains("custom program error: 0x1772") || s.contains("InvalidEquihash") {
+        "stale challenge"
+    } else if s.contains("blockhash not found") || s.contains("BlockhashNotFound") {
+        "blockhash expired"
+    } else {
+        "submit error"
+    }
+}
+
+/// Derive the ATA for `(owner, mint)` under the given token program. Works
+/// for both classic SPL Token and Token-2022 — the address depends on which
+/// token program owns the mint.
+fn derive_ata(owner: &Pubkey, mint: &Pubkey, token_program_id: &Pubkey) -> Pubkey {
+    get_associated_token_address_with_program_id(owner, mint, token_program_id)
+}
+
+fn fetch_config(rpc: &RpcClient, config_pda: &Pubkey) -> Result<EquiumConfig> {
+    let acct = rpc.get_account(config_pda)?;
+    let mut data = acct.data.as_slice();
+    let cfg = EquiumConfig::try_deserialize(&mut data)?;
+    Ok(cfg)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn submit_mine(
+    rpc: &RpcClient,
+    miner_kp: &Keypair,
+    program_id: &Pubkey,
+    config_pda: &Pubkey,
+    cfg: &EquiumConfig,
+    vault_pda: &Pubkey,
+    miner_ata: &Pubkey,
+    token_program_id: &Pubkey,
+    nonce: &[u8; 32],
+    soln_indices: Vec<u8>,
+    cu_limit: u32,
+) -> Result<String> {
+    let miner = miner_kp.pubkey();
+    let accounts = equium::accounts::Mine {
+        miner,
+        config: *config_pda,
+        mint: cfg.mint,
+        mineable_vault: *vault_pda,
+        miner_ata: *miner_ata,
+        token_program: *token_program_id,
+        associated_token_program: anchor_spl::associated_token::ID,
+        system_program: system_program::ID,
+        slot_hashes: sysvar::slot_hashes::ID,
+    }
+    .to_account_metas(None);
+    // anchor-lang re-exports a `solana-program`-flavored AccountMeta; convert.
+    let accounts: Vec<AccountMeta> = accounts
+        .into_iter()
+        .map(|m| AccountMeta {
+            pubkey: m.pubkey,
+            is_signer: m.is_signer,
+            is_writable: m.is_writable,
+        })
+        .collect();
+    let data = equium::instruction::Mine {
+        nonce: *nonce,
+        soln_indices,
+    }
+    .data();
+    let ix = Instruction {
+        program_id: *program_id,
+        accounts,
+        data,
+    };
+    let cu_ix = ComputeBudgetInstruction::set_compute_unit_limit(cu_limit);
+
+    let recent = rpc.get_latest_blockhash()?;
+    let tx = Transaction::new_signed_with_payer(
+        &[cu_ix, ix],
+        Some(&miner),
+        &[miner_kp],
+        recent,
+    );
+    let sig = rpc.send_and_confirm_transaction(&tx)?;
+    Ok(sig.to_string())
+}
