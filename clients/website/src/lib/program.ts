@@ -43,9 +43,28 @@ export interface EquiumConfig {
 }
 
 export function getProgram(connection: Connection, wallet: any): Program<any> {
-  // The Anchor Provider needs a wallet adapter. We use a thin shim that
-  // delegates `signTransaction` to the connected wallet adapter.
   const provider = new AnchorProvider(connection, wallet, {
+    commitment: "confirmed",
+  });
+  return new Program(idl as any, provider) as Program<any>;
+}
+
+/**
+ * Build an Anchor Program client for the built-in browser wallet. We wrap
+ * our wallet-context's signTransaction in the shape AnchorProvider wants.
+ */
+export function getProgramAnchorlike(
+  connection: Connection,
+  pubkey: PublicKey,
+  signTransaction: (tx: Transaction) => Promise<Transaction>
+): Program<any> {
+  const fakeWallet = {
+    publicKey: pubkey,
+    signTransaction,
+    signAllTransactions: async (txs: Transaction[]) =>
+      Promise.all(txs.map(signTransaction)),
+  };
+  const provider = new AnchorProvider(connection, fakeWallet as any, {
     commitment: "confirmed",
   });
   return new Program(idl as any, provider) as Program<any>;

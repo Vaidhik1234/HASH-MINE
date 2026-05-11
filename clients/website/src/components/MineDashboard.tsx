@@ -7,18 +7,16 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  useConnection,
-  useWallet,
-} from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import { Connection, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { getAccount, getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { detectTokenProgram, fetchConfig, getProgram, type EquiumConfig } from "@/lib/program";
+import { useWallet } from "@/lib/wallet-context";
+import { detectTokenProgram, fetchConfig, getProgramAnchorlike, type EquiumConfig } from "@/lib/program";
 import { startMiner, type MinerHandle } from "@/lib/miner-engine";
+import { RPC_URL } from "@/lib/rpc";
 import { ShareCardModal } from "./ShareCardModal";
 import { ReferralBanner } from "./ReferralBanner";
 import { ReferralButton } from "./ReferralButton";
+import { WalletMenu } from "./wallet/WalletMenu";
 
 interface LogLine {
   ts: number;
@@ -32,7 +30,7 @@ interface SessionStats {
   cumulativeNonces: number;
   startedAt: number | null;
   tryInRound: number;
-  hashrate: number; // hashes per second
+  hashrate: number;
 }
 
 const INITIAL_STATS: SessionStats = {
@@ -45,11 +43,17 @@ const INITIAL_STATS: SessionStats = {
 };
 
 export function MineDashboard() {
-  const { connection } = useConnection();
   const wallet = useWallet();
+  const pubkey = wallet.loaded?.keypair.publicKey ?? null;
+
+  // Build a Connection + Program from the wallet, but only after unlock
+  const connection = useMemo(
+    () => new Connection(RPC_URL, "confirmed"),
+    []
+  );
   const program = useMemo(
-    () => (wallet.publicKey ? getProgram(connection, wallet) : null),
-    [connection, wallet.publicKey?.toBase58()]
+    () => (pubkey ? getProgramAnchorlike(connection, pubkey, wallet.signTransaction) : null),
+    [connection, pubkey?.toBase58()]
   );
 
   const [config, setConfig] = useState<EquiumConfig | null>(null);
@@ -70,14 +74,13 @@ export function MineDashboard() {
     setLogs((prev) => [...prev.slice(-200), { ts: Date.now(), level, msg }]);
   }, []);
 
-  // Auto-scroll logs
   useEffect(() => {
     if (logsRef.current) logsRef.current.scrollTop = logsRef.current.scrollHeight;
   }, [logs.length]);
 
-  // Fetch balances + config periodically while connected
+  // Fetch balances + config periodically
   useEffect(() => {
-    if (!program || !wallet.publicKey) return;
+    if (!program || !pubkey) return;
     let cancelled = false;
     const refresh = async () => {
       const cfg = await fetchConfig(program);
@@ -88,7 +91,7 @@ export function MineDashboard() {
           const tokenProgram = await detectTokenProgram(connection, cfg.mint);
           const ata = getAssociatedTokenAddressSync(
             cfg.mint,
-            wallet.publicKey!,
+            pubkey,
             false,
             tokenProgram
           );
@@ -99,7 +102,7 @@ export function MineDashboard() {
         }
       }
       try {
-        const lamports = await connection.getBalance(wallet.publicKey!);
+        const lamports = await connection.getBalance(pubkey);
         if (!cancelled) setSolBalance(lamports / LAMPORTS_PER_SOL);
       } catch {}
     };
@@ -109,37 +112,40 @@ export function MineDashboard() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [program, wallet.publicKey?.toBase58(), connection]);
+  }, [program, pubkey?.toBase58(), connection]);
 
-  // Tick to recompute hashrate from cumulative nonces / elapsed
+  // Recompute hashrate tick
   useEffect(() => {
     if (!running || !stats.startedAt) return;
     const id = setInterval(() => {
       setStats((s) => {
         if (!s.startedAt) return s;
         const elapsed = Math.max(0.001, (Date.now() - s.startedAt) / 1000);
-        const rate = s.cumulativeNonces / elapsed;
-        return { ...s, hashrate: rate };
+        return { ...s, hashrate: s.cumulativeNonces / elapsed };
       });
     }, 500);
     return () => clearInterval(id);
   }, [running, stats.startedAt]);
 
   const start = () => {
-    if (!program || !wallet.publicKey || !wallet.signTransaction) {
-      log("err", "Wallet not connected yet.");
+    if (!program || !pubkey) {
+      log("err", "Wallet not unlocked yet.");
+      return;
+    }
+    if (solBalance !== null && solBalance < 0.01) {
+      log("err", "Wallet needs SOL for tx fees. Send some SOL to this wallet first.");
       return;
     }
     setLogs([]);
     setStats({ ...INITIAL_STATS, startedAt: Date.now() });
     setRunning(true);
     setStatus("solving");
-    log("info", `mining as ${shortPk(wallet.publicKey.toBase58())}`);
+    log("info", `mining as ${shortPk(pubkey.toBase58())}`);
     minerHandle.current = startMiner({
       connection,
       program,
-      miner: wallet.publicKey,
-      signTransaction: wallet.signTransaction!,
+      miner: pubkey,
+      signTransaction: wallet.signTransaction,
       cb: {
         log,
         onConfig: setConfig,
@@ -172,10 +178,7 @@ export function MineDashboard() {
     log("info", "mining stopped");
   };
 
-  // Cleanup on unmount
   useEffect(() => () => minerHandle.current?.stop(), []);
-
-  const connected = !!wallet.publicKey;
 
   return (
     <div className="space-y-6 pb-12">
@@ -192,80 +195,68 @@ export function MineDashboard() {
             Mine $EQM
           </h1>
           <p className="mt-2 text-[15px] text-[var(--color-fg-dim)] max-w-xl">
-            Connect a wallet. Press start. Your laptop solves Equihash and
-            earns block rewards. No install. No bridge. No custody.
+            Press start. Your laptop solves Equihash and earns block rewards.
+            Your keys never leave this device.
           </p>
         </div>
-        <div>
-          <WalletMultiButton />
-        </div>
+        <WalletMenu />
       </div>
 
-      {/* Wallet card */}
       <WalletPanel
-        connected={connected}
-        pubkey={wallet.publicKey?.toBase58() ?? null}
+        pubkey={pubkey?.toBase58() ?? null}
         solBalance={solBalance}
         eqmBalance={eqmBalance}
       />
 
-      {!connected ? (
-        <ConnectPrompt />
-      ) : (
-        <>
-          {/* Live stats */}
-          <LiveStats
-            stats={stats}
-            running={running}
-            status={status}
-            config={config}
-          />
-
-          {/* Controls */}
-          <div className="flex items-center gap-3">
-            {!running ? (
-              <button
-                onClick={start}
-                disabled={!config?.miningOpen}
-                className="group inline-flex items-center gap-2.5 px-7 py-4 rounded-full bg-[var(--color-rose)] text-[var(--color-bg)] text-[16px] font-bold hover:bg-[var(--color-rose-bright)] transition-all glow-rose hover:scale-[1.01] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--color-rose)] disabled:hover:scale-100"
-              >
-                <PlayIcon />
-                Start mining
-              </button>
-            ) : (
-              <button
-                onClick={stop}
-                className="inline-flex items-center gap-2.5 px-7 py-4 rounded-full border-2 border-[var(--color-rose)] text-[var(--color-rose)] text-[16px] font-bold hover:bg-[var(--color-rose)] hover:text-[var(--color-bg)] transition-all"
-              >
-                <StopIcon />
-                Stop
-              </button>
-            )}
-            <button
-              onClick={() => setShareOpen(true)}
-              disabled={stats.blocks === 0 && stats.cumulativeNonces === 0}
-              className="inline-flex items-center gap-2 px-5 py-4 rounded-full border border-[var(--color-border-bright)] text-[14px] font-medium text-[var(--color-fg-soft)] hover:bg-white/[0.03] hover:text-[var(--color-fg)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <ShareIcon />
-              Share my stats
-            </button>
-          </div>
-
-          {/* Activity log */}
-          <ActivityLog logs={logs} logsRef={logsRef} />
-
-          {/* Referral link */}
-          {wallet.publicKey && (
-            <ReferralButton pubkey={wallet.publicKey.toBase58()} />
-          )}
-        </>
+      {/* Insufficient SOL warning */}
+      {solBalance !== null && solBalance < 0.01 && (
+        <FundingPanel pubkey={pubkey?.toBase58() ?? ""} />
       )}
 
-      {/* Share modal */}
-      {shareOpen && (
+      <LiveStats
+        stats={stats}
+        running={running}
+        status={status}
+        config={config}
+      />
+
+      <div className="flex items-center gap-3 flex-wrap">
+        {!running ? (
+          <button
+            onClick={start}
+            disabled={!config?.miningOpen || (solBalance !== null && solBalance < 0.01)}
+            className="group inline-flex items-center gap-2.5 px-7 py-4 rounded-full bg-[var(--color-rose)] text-[var(--color-bg)] text-[16px] font-bold hover:bg-[var(--color-rose-bright)] transition-all glow-rose hover:scale-[1.01] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--color-rose)] disabled:hover:scale-100"
+          >
+            <PlayIcon />
+            Start mining
+          </button>
+        ) : (
+          <button
+            onClick={stop}
+            className="inline-flex items-center gap-2.5 px-7 py-4 rounded-full border-2 border-[var(--color-rose)] text-[var(--color-rose)] text-[16px] font-bold hover:bg-[var(--color-rose)] hover:text-[var(--color-bg)] transition-all"
+          >
+            <StopIcon />
+            Stop
+          </button>
+        )}
+        <button
+          onClick={() => setShareOpen(true)}
+          disabled={stats.blocks === 0 && stats.cumulativeNonces === 0}
+          className="inline-flex items-center gap-2 px-5 py-4 rounded-full border border-[var(--color-border-bright)] text-[14px] font-medium text-[var(--color-fg-soft)] hover:bg-white/[0.03] hover:text-[var(--color-fg)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <ShareIcon />
+          Share my stats
+        </button>
+      </div>
+
+      <ActivityLog logs={logs} logsRef={logsRef} />
+
+      {pubkey && <ReferralButton pubkey={pubkey.toBase58()} />}
+
+      {shareOpen && pubkey && (
         <ShareCardModal
           onClose={() => setShareOpen(false)}
-          pubkey={wallet.publicKey?.toBase58() ?? ""}
+          pubkey={pubkey.toBase58()}
           stats={stats}
         />
       )}
@@ -273,40 +264,11 @@ export function MineDashboard() {
   );
 }
 
-function ConnectPrompt() {
-  return (
-    <div className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-panel)] p-10 text-center relative overflow-hidden">
-      <div
-        className="absolute -inset-10 opacity-20 blur-3xl pointer-events-none"
-        style={{
-          background:
-            "radial-gradient(circle, rgba(232,90,141,0.45), transparent 65%)",
-        }}
-      />
-      <div className="relative">
-        <h2 className="text-[28px] md:text-[34px] font-bold tracking-[-0.02em] mb-2">
-          Connect your wallet to begin
-        </h2>
-        <p className="text-[15px] text-[var(--color-fg-dim)] max-w-md mx-auto mb-7">
-          The miner is fully opt-in. You decide when to start and stop.
-          Your wallet signs each block submission — your keys never leave
-          your device.
-        </p>
-        <div className="flex justify-center">
-          <WalletMultiButton />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function WalletPanel({
-  connected,
   pubkey,
   solBalance,
   eqmBalance,
 }: {
-  connected: boolean;
   pubkey: string | null;
   solBalance: number | null;
   eqmBalance: bigint;
@@ -316,13 +278,13 @@ function WalletPanel({
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-[var(--color-fg-dim)] mb-1.5 font-semibold">
-            {connected ? "Connected wallet" : "No wallet"}
+            Mining wallet
           </div>
-          <div className="font-mono text-[16px] font-semibold text-[var(--color-teal)]">
-            {connected ? pubkey : "—"}
+          <div className="font-mono text-[14px] md:text-[16px] font-semibold text-[var(--color-teal)] break-all">
+            {pubkey ?? "—"}
           </div>
           <div className="text-[12px] text-[var(--color-fg-dim)] mt-1">
-            Block rewards land directly here. Sign-in is local; we never store keys.
+            Block rewards land directly here. Backed by your encrypted local key.
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3 md:gap-6 md:flex-shrink-0">
@@ -341,6 +303,46 @@ function WalletPanel({
             <div className="text-[24px] font-bold text-[var(--color-rose)]">
               {formatEqm(eqmBalance)}
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FundingPanel({ pubkey }: { pubkey: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    if (!pubkey) return;
+    try {
+      await navigator.clipboard.writeText(pubkey);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    } catch {}
+  };
+  return (
+    <div className="rounded-3xl border border-[var(--color-gold)]/30 bg-[var(--color-gold)]/5 p-6">
+      <div className="flex items-start gap-4">
+        <span className="text-[24px]">⚡</span>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-[18px] font-bold text-[var(--color-gold)] mb-1">
+            Fund your mining wallet to start
+          </h3>
+          <p className="text-[13px] text-[var(--color-fg-soft)] mb-3">
+            Mining each block costs a fraction of a cent in SOL transaction
+            fees. Send <span className="font-mono font-bold">~0.05 SOL</span>{" "}
+            to the address below to mine for hours.
+          </p>
+          <div className="flex items-center gap-2 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border-bright)] px-3 py-2 font-mono text-[12px]">
+            <span className="break-all flex-1 text-[var(--color-teal)]">
+              {pubkey || "—"}
+            </span>
+            <button
+              onClick={copy}
+              className="flex-shrink-0 px-3 py-1 rounded text-[11px] font-bold bg-[var(--color-rose)] text-[var(--color-bg)] hover:bg-[var(--color-rose-bright)]"
+            >
+              {copied ? "✓" : "Copy"}
+            </button>
           </div>
         </div>
       </div>
@@ -390,7 +392,6 @@ function LiveStats({
         }
         accent={running ? "teal" : "fg-dim"}
       />
-      {/* round-state ribbon */}
       <div className="col-span-2 md:col-span-4 mt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] px-5 py-3.5">
         <div className="flex items-center gap-4">
           <div className="text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--color-fg-dim)]">
@@ -509,7 +510,6 @@ function ActivityLog({
   );
 }
 
-/* Icons */
 function PlayIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -534,7 +534,6 @@ function ShareIcon() {
   );
 }
 
-/* Helpers */
 function shortPk(s: string): string {
   return `${s.slice(0, 4)}…${s.slice(-4)}`;
 }

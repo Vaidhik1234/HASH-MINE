@@ -7,13 +7,33 @@ import {
 import idl from "../idl.json";
 import { CONFIG_PDA } from "./program";
 
+// Server-side RPC URL (full upstream URL with API key). Never sent to the
+// browser; only used by server components, /api/state, /api/rpc, and OG
+// image generators.
+const SERVER_RPC_URL =
+  process.env.SOLANA_RPC_URL ||
+  process.env.HELIUS_RPC_URL ||
+  process.env.NEXT_PUBLIC_RPC_URL ||
+  "https://api.devnet.solana.com";
+
+/** Client-facing RPC URL. Returns the user's override if one is stored,
+ * otherwise the same-origin proxy. Server-side returns the upstream URL. */
+export function clientRpcUrl(): string {
+  if (typeof window === "undefined") return SERVER_RPC_URL;
+  try {
+    const override = localStorage.getItem("equium:rpc-override");
+    if (override && /^https?:\/\//.test(override)) return override;
+  } catch {}
+  return "/api/rpc";
+}
+
 export const RPC_URL =
-  process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com";
-export const CLUSTER =
-  process.env.NEXT_PUBLIC_CLUSTER || "devnet";
+  typeof window !== "undefined" ? clientRpcUrl() : SERVER_RPC_URL;
+
+export const CLUSTER = process.env.NEXT_PUBLIC_CLUSTER || "devnet";
 
 export function readConnection(): Connection {
-  return new Connection(RPC_URL, "confirmed");
+  return new Connection(SERVER_RPC_URL, "confirmed");
 }
 
 // Read-only program client. For server-side and read-only client use.

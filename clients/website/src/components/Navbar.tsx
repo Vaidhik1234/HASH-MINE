@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/#how", label: "How" },
   { href: "/#tokenomics", label: "Tokenomics" },
   { href: "/explorer", label: "Explorer" },
+  { href: "/docs/rpc", label: "RPC" },
   { href: "/mine", label: "Mine", primary: true },
 ];
 
