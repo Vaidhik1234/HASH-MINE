@@ -4,26 +4,26 @@ export function HowItWorks() {
       <div className="max-w-5xl mx-auto">
         <SectionHeader
           kicker="How it works"
-          title="Proof-of-work, returned to the people."
-          sub="Equihash is memory-bound, not compute-bound. A $40k GPU farm doesn't beat your CPU. Anyone with a machine can compete — exactly how Bitcoin felt in 2010."
+          title="Proof-of-work on Solana."
+          sub="Equihash 96,5 is memory-bound rather than compute-bound. GPU farms have no meaningful edge over a CPU, so anyone with a machine can compete on roughly equal footing."
         />
 
         <div className="mt-16 grid md:grid-cols-3 gap-4">
           <StepCard
             num="01"
             title="Generate"
-            body="Your computer hashes random nonces against the current network challenge. Each nonce + the current block target is a fresh shot at the lottery."
+            body="Your machine hashes random nonces against the current network challenge. Each nonce is an independent attempt at the puzzle."
           />
           <StepCard
             num="02"
             title="Solve"
-            body="When a nonce produces a hash under the difficulty target, you've found an Equihash solution. The puzzle includes your wallet, so nobody can front-run it."
+            body="When a nonce produces a hash that falls under the difficulty target, you have an Equihash solution. The puzzle is bound to your wallet address, so the solution cannot be front-run."
             highlight
           />
           <StepCard
             num="03"
             title="Earn"
-            body="Submit the solution as a Solana transaction. The on-chain program verifies it and transfers 25 EQM directly into your wallet. ~1 minute block time."
+            body="Submit the solution as a Solana transaction. The on-chain program verifies it and transfers 25 EQM to your wallet. Rounds close roughly every minute."
           />
         </div>
 
@@ -31,13 +31,13 @@ export function HowItWorks() {
         <div className="mt-6 grid md:grid-cols-2 gap-4">
           <InfoCallout
             kicker="Difficulty"
-            title="Auto-retargets every hour."
-            body="Every 60 blocks, the network measures actual elapsed time vs target (~60 min) and tightens or loosens difficulty within a [0.5×, 2×] clamp. Identical convention to Bitcoin — sharper damping for the smaller window."
+            title="Retargets every hour."
+            body="Every 60 blocks the protocol compares elapsed time to the 60-minute target and adjusts the difficulty within a [0.5x, 2x] clamp. The convention follows Bitcoin's retarget, with tighter damping suited to the shorter window."
           />
           <InfoCallout
-            kicker="Halving"
+            kicker="Emission"
             title="Block reward halves every ~8.6 months."
-            body="Starting at 25 EQM per block, the reward drops to 12.5 → 6.25 → … forever. Same emission curve as Bitcoin, mapped to ~1-minute blocks. 99% of supply is mined in the first decade."
+            body="The reward starts at 25 EQM per block and halves at fixed intervals: 12.5, 6.25, and so on. The emission curve mirrors Bitcoin, mapped to roughly one-minute blocks, so 99% of supply is produced within the first decade."
           />
         </div>
       </div>
@@ -130,10 +130,10 @@ export function SectionHeader({
 }) {
   return (
     <div className="max-w-3xl">
-      <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[var(--color-rose)] mb-5 font-semibold">
-        — {kicker} —
+      <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[var(--color-rose)] mb-4 font-semibold">
+        {kicker}
       </div>
-      <h2 className="text-[44px] md:text-[60px] font-black tracking-[-0.03em] leading-[1.02] text-balance mb-5">
+      <h2 className="text-[36px] md:text-[48px] font-black tracking-[-0.025em] leading-[1.05] text-balance mb-5">
         {title}
       </h2>
       {sub && (

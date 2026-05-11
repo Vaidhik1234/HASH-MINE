@@ -21,8 +21,8 @@ export function MinePlaceholder() {
 
         <p className="mt-8 text-[18px] leading-[1.55] text-[var(--color-fg-dim)] text-balance">
           We're wiring the WASM Equihash solver into the site so you can mine
-          $EQM with one click. Connect Phantom, click Start, earn — no install.
-          Works on phones too.
+          $EQM with one click. Generate a wallet, click Start, earn. No install,
+          works on phones too.
         </p>
 
         <p className="mt-6 text-[15px] leading-[1.6] text-[var(--color-fg-dim)] max-w-xl mx-auto">

@@ -6,8 +6,8 @@ export function Tokenomics() {
       <div className="max-w-5xl mx-auto">
         <SectionHeader
           kicker="Tokenomics"
-          title="No presale. No allocation. No farm."
-          sub="The 21M supply splits into a 10% premine for DEX liquidity and a 90% pool that's mined block-by-block, just like Bitcoin. Mint authority is revoked at launch — the cap is structural, not a promise."
+          title="Fixed supply. No insider allocation."
+          sub="The 21,000,000 total supply is split into a 10% premine reserved for DEX liquidity and a 90% pool produced through mining. Mint authority is revoked at launch, so the cap is structural and enforced at the SPL Token level."
         />
 
         <div className="mt-16 grid md:grid-cols-12 gap-4">
@@ -19,9 +19,9 @@ export function Tokenomics() {
               <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[var(--color-fg-dim)] mb-3 font-semibold">
                 Supply split
               </div>
-              <div className="text-[78px] md:text-[96px] font-black tracking-[-0.04em] leading-none mb-5">
+              <div className="text-[60px] md:text-[80px] font-black tracking-[-0.035em] leading-none mb-5">
                 21,000,000
-                <span className="text-[28px] text-[var(--color-fg-dim)] ml-3 font-normal">
+                <span className="text-[24px] text-[var(--color-fg-dim)] ml-3 font-normal">
                   EQM
                 </span>
               </div>
@@ -91,16 +91,16 @@ export function Tokenomics() {
 
           {/* Small property cards */}
           <Prop
-            title="Hard cap is structural."
-            body="Mint authority is revoked at launch. No future inflation is possible — enforced at the SPL Token level, not just program logic."
+            title="Cap enforced on-chain."
+            body="Mint authority is revoked at launch, so no future inflation is possible. This is enforced at the SPL Token program level, not by Equium's own program logic."
           />
           <Prop
             title="No team allocation."
-            body="The 10% premine is reserved for DEX liquidity and operational costs. No founder tokens. No team vesting."
+            body="The 10% premine is reserved for DEX liquidity and operational costs. There are no founder tokens and no team vesting schedule."
           />
           <Prop
-            title="Empty rounds, real burn."
-            body="If a round closes without a winner, the unminted reward stays in the program vault permanently. No IOUs against future blocks."
+            title="Empty rounds reduce float."
+            body="If a round closes without a winning solution, the unminted reward remains in the program vault permanently. The protocol does not issue IOUs against future blocks."
           />
         </div>
       </div>

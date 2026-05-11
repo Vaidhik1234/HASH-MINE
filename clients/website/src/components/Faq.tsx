@@ -6,31 +6,31 @@ import { SectionHeader } from "./HowItWorks";
 const ITEMS = [
   {
     q: "Will I make money mining EQM?",
-    a: "Maybe. Maybe not. Don't quit your job. Treat this like distributed sudoku that occasionally gives you internet money. Equium is an experiment in fair-launch distribution, not a yield product.",
+    a: "Maybe, maybe not. Equium is an experiment in fair-launch distribution rather than a yield product. The protocol issues 25 EQM per block to whoever submits the first valid solution, but the market value of those tokens is determined by demand on the open market and is not guaranteed.",
   },
   {
     q: "What if my computer is slow?",
-    a: "It mines slower. The network adjusts difficulty so blocks come at the same rate regardless of total hashrate, but your share of those blocks scales with your CPU. A modest machine will still earn — just less than a workstation.",
+    a: "It will mine, just slower. The network adjusts difficulty so blocks arrive at roughly the same cadence regardless of total hashrate, but the share of those blocks you win scales with your CPU. A modest machine still earns a proportional amount — less than a workstation, but the math is the same.",
   },
   {
     q: "Can someone steal my solution?",
-    a: "No. Solutions are cryptographically bound to the wallet that signs the transaction. If you broadcast a winning solution and someone copies the bytes, the chain rejects their tx because the puzzle includes their wallet address, not yours.",
+    a: "No. Each Equihash solution is bound to the wallet address that submits it, because the puzzle input includes the miner's pubkey. Replaying a captured solution from a different wallet produces a different puzzle and fails on-chain verification.",
   },
   {
     q: "Why Solana?",
-    a: "Cheap fees. A mine transaction costs a fraction of a cent. The same protocol on Ethereum mainnet would cost more in gas than the block reward is worth. Solana also gives sub-second block finality, so winners get confirmed instantly.",
+    a: "Transaction costs and finality. A mine transaction costs a fraction of a cent, which keeps the economics viable even at the lowest block rewards. Equivalent protocols on higher-fee chains would cost more in gas than the reward is worth. Sub-second block finality also means winners are confirmed quickly.",
   },
   {
     q: "Is the supply really capped at 21M?",
-    a: "Yes. Before the public launch, the mint authority is revoked at the SPL Token level. After that, no more EQM can ever be created — by anyone, including the team. The cap is structural, not a promise.",
+    a: "Yes. Mint authority is revoked at the SPL Token level before the public launch. After that, no additional EQM can ever be created by anyone — the cap is enforced by the runtime, not by promises in protocol code.",
   },
   {
-    q: "What's the GitHub repo?",
-    a: "Open source under Apache-2.0 at github.com/HannaPrints/equium. The entire protocol is ~1000 lines of Rust. Fork it, audit it, run your own miner.",
+    q: "Where is the source code?",
+    a: "The full protocol, miners, and website are open source under Apache-2.0 at github.com/HannaPrints/equium. The on-chain program is roughly 1,000 lines of Rust. You can audit it, fork it, or run your own miner against it.",
   },
   {
     q: "When does mainnet launch?",
-    a: "After an external security audit. Devnet is live now for testing. Follow @EquiumEQM on X for launch updates.",
+    a: "After external review of the on-chain program. Devnet is live for testing now. Follow @EquiumEQM for launch updates.",
   },
 ];
 

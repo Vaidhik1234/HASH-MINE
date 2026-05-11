@@ -5,9 +5,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const LINKS = [
-  { href: "/#how", label: "How" },
-  { href: "/#tokenomics", label: "Tokenomics" },
   { href: "/explorer", label: "Explorer" },
+  { href: "/docs", label: "Docs" },
   { href: "/download", label: "Download" },
   { href: "/mine", label: "Mine", primary: true },
 ];

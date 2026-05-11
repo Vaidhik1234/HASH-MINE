@@ -20,17 +20,17 @@ export function Hero() {
         </div>
 
         {/* Headline */}
-        <h1 className="text-[64px] md:text-[112px] leading-[0.95] font-black tracking-[-0.04em] text-balance fade-up" style={{ animationDelay: "60ms" }}>
-          A token you
-          <br />
+        <h1 className="text-[56px] md:text-[88px] leading-[1] font-black tracking-[-0.035em] text-balance fade-up" style={{ animationDelay: "60ms" }}>
+          A token you{" "}
           <span className="text-[var(--color-rose)]">actually mine.</span>
         </h1>
 
         {/* Sub */}
-        <p className="mt-8 max-w-2xl mx-auto text-[18px] md:text-[20px] leading-[1.55] text-[var(--color-fg-dim)] text-balance fade-up" style={{ animationDelay: "120ms" }}>
-          Equium ($EQM) is a CPU-mineable token on Solana. Bitcoin-style economics —{" "}
-          <span className="text-[var(--color-fg)]">21M hard cap, halving forever</span>.
-          No presale, no airdrop, no VC. Mine it on any machine. Even your phone.
+        <p className="mt-7 max-w-2xl mx-auto text-[17px] md:text-[19px] leading-[1.6] text-[var(--color-fg-dim)] text-balance fade-up" style={{ animationDelay: "120ms" }}>
+          Equium ($EQM) is a CPU-mineable token on Solana with{" "}
+          <span className="text-[var(--color-fg)]">a 21M hard cap and a halving schedule</span>.
+          The supply is produced through proof-of-work, not distributed by a team. There
+          was no presale and there is no insider allocation.
         </p>
 
         {/* CTAs */}

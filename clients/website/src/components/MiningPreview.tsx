@@ -10,7 +10,7 @@ export function MiningPreview() {
             <SectionHeader
               kicker="Mine it"
               title="Your machine is the rig."
-              sub="Equihash (96, 5) needs ~50 MB of RAM per thread. Runs on any modern CPU. Solves take a few seconds. Block rewards land directly in your wallet."
+              sub="Equihash 96,5 uses roughly 50 MB of memory per thread and runs on any modern CPU. Solutions take a few seconds to find, and block rewards are delivered directly to your wallet."
             />
             <div className="mt-9 flex flex-col sm:flex-row gap-3">
               <Link

@@ -75,9 +75,9 @@ export function ExplorerDashboard({
         <div>
           <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[var(--color-rose)] mb-2 font-semibold flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-mint)] live-dot" />
-            — Live · Devnet —
+            Live · Devnet
           </div>
-          <h1 className="text-[44px] md:text-[60px] font-black tracking-[-0.03em] leading-[1]">
+          <h1 className="text-[36px] md:text-[48px] font-black tracking-[-0.025em] leading-[1.05]">
             Explorer
           </h1>
           <p className="mt-2 text-[15px] text-[var(--color-fg-dim)]">

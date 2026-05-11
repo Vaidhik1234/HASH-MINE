@@ -37,6 +37,9 @@ keypairs/
 # anything matching `<base58-pubkey>.json` is presumed private.
 *EQM.json
 *EQm.json
+*eqm.json
+*EqM.json
+1Mhv*.json
 mint-keypair.json
 
 # WASM build outputs

@@ -194,7 +194,7 @@ export function MineDashboard() {
         <div>
           <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[var(--color-rose)] mb-2 font-semibold flex items-center gap-2">
             <span className={`w-1.5 h-1.5 rounded-full ${running ? "bg-[var(--color-mint)] live-dot" : "bg-[var(--color-fg-faint)]"}`} />
-            — Browser miner · Devnet —
+            Browser miner · Devnet
           </div>
           <h1 className="text-[44px] md:text-[60px] font-black tracking-[-0.03em] leading-[1]">
             Mine $EQM
