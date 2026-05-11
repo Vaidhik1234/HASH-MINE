@@ -202,10 +202,22 @@ export function startMiner(opts: MinerOptions): MinerHandle {
         const sig = await connection.sendRawTransaction(signed.serialize(), {
           skipPreflight: true,
         });
-        await connection.confirmTransaction(
-          { signature: sig, ...recent },
-          "confirmed"
-        );
+
+        // Don't use `confirmTransaction` — its blockhash-validity window is
+        // narrow and Helius/devnet often misses the confirmation event even
+        // when the tx lands. Poll signature status directly with a longer
+        // timeout, and inspect on-chain logs to detect actual rejection.
+        const outcome = await waitForSignature(connection, sig, 90_000);
+        if (outcome.kind === "failed") {
+          throw new Error(`${outcome.reason} (${sig.slice(0, 8)}…)`);
+        }
+        if (outcome.kind === "lost") {
+          // Tx never landed. The `finally` block re-dispatches the slot;
+          // we just skip the success path so we don't credit a block.
+          cb.log("err", `submit lost — tx didn't land within 90s`);
+          return;
+        }
+
         cb.onBlockMined({
           height: cfg.blockHeight,
           sig,
@@ -296,6 +308,79 @@ export function startMiner(opts: MinerOptions): MinerHandle {
   })();
 
   return { stop };
+}
+
+type SignatureOutcome =
+  | { kind: "confirmed" }
+  | { kind: "failed"; reason: string }
+  | { kind: "lost" };
+
+/** Poll until the signature confirms, reverts, or we give up. Avoids
+ * `confirmTransaction`'s blockhash-window limitation — devnet/Helius can
+ * deliver confirmations late, after the blockhash expires, and the standard
+ * helper treats that as failure even when the tx actually landed. */
+async function waitForSignature(
+  connection: Connection,
+  sig: string,
+  timeoutMs: number
+): Promise<SignatureOutcome> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const resp = await connection.getSignatureStatuses([sig], {
+        searchTransactionHistory: true,
+      });
+      const status = resp.value[0];
+      if (status) {
+        if (status.err) {
+          let logs: string[] = [];
+          try {
+            const tx = await connection.getTransaction(sig, {
+              commitment: "confirmed",
+              maxSupportedTransactionVersion: 0,
+            });
+            logs = tx?.meta?.logMessages ?? [];
+          } catch {}
+          return {
+            kind: "failed",
+            reason: classifyMineFailure(JSON.stringify(status.err), logs),
+          };
+        }
+        if (
+          status.confirmationStatus === "confirmed" ||
+          status.confirmationStatus === "finalized"
+        ) {
+          return { kind: "confirmed" };
+        }
+      }
+    } catch {
+      // Transient RPC error — keep polling.
+    }
+    await sleep(2000);
+  }
+  return { kind: "lost" };
+}
+
+/** Map an on-chain mine failure to a short, user-readable reason. Anchor
+ * error codes start at 6000; see `programs/equium/src/errors.rs` for the
+ * full enum order. */
+function classifyMineFailure(errJson: string, logs: string[]): string {
+  const all = errJson + " " + logs.join(" | ");
+  if (all.includes("AboveTarget") || all.includes('"Custom":6003') || all.includes("0x1773"))
+    return "above target — off-chain check disagreed with on-chain";
+  if (all.includes("InvalidEquihash") || all.includes('"Custom":6002') || all.includes("0x1772"))
+    return "invalid Equihash solution — solver bug";
+  if (all.includes("StaleChallenge") || all.includes('"Custom":6004') || all.includes("0x1774"))
+    return "stale challenge — another miner won this round";
+  if (all.includes("MiningNotOpen") || all.includes('"Custom":6013') || all.includes("0x177d"))
+    return "mining not open yet";
+  if (all.includes("SupplyExhausted") || all.includes('"Custom":6006'))
+    return "mineable supply exhausted";
+  if (all.includes("BlockhashNotFound") || all.includes("blockhash"))
+    return "blockhash expired before tx landed";
+  if (all.includes("InsufficientFunds") || all.includes("insufficient lamports"))
+    return "wallet ran out of SOL for fees";
+  return `tx reverted on-chain (${errJson.slice(0, 60)})`;
 }
 
 function sleep(ms: number) {
