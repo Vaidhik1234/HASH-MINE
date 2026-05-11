@@ -7,7 +7,17 @@ interface Props {
 }
 
 export function HashrateChart({ series }: Props) {
-  const { blocksPerMinute, currentBpm, averageBpm, trendPct } = series;
+  const {
+    blocksPerMinute,
+    currentBpm,
+    averageBpm,
+    trendPct,
+    estimatedHps,
+    averageHps,
+  } = series;
+
+  const { value: hpsValue, unit: hpsUnit } = formatHashrate(estimatedHps);
+  const { value: avgHpsValue, unit: avgHpsUnit } = formatHashrate(averageHps);
 
   const trendUp = trendPct >= 0;
   const trendColor = trendUp
@@ -28,18 +38,18 @@ export function HashrateChart({ series }: Props) {
 
       <div className="relative">
         {/* Header */}
-        <div className="flex items-start justify-between mb-6">
+        <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
           <div>
             <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-[var(--color-fg-dim)] mb-1.5 font-semibold flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-mint)] live-dot" />
               Network hashrate
             </div>
-            <div className="flex items-baseline gap-3">
+            <div className="flex items-baseline gap-2">
               <div className="text-[44px] md:text-[56px] font-black tracking-[-0.03em] leading-none text-[var(--color-mint)]">
-                {currentBpm.toFixed(1)}
+                {hpsValue}
               </div>
-              <div className="text-[14px] md:text-[16px] font-mono text-[var(--color-fg-dim)]">
-                blocks / min
+              <div className="text-[16px] md:text-[20px] font-mono text-[var(--color-fg-dim)] font-bold">
+                {hpsUnit}
               </div>
               <div
                 className="text-[14px] md:text-[16px] font-mono font-bold ml-2"
@@ -48,16 +58,23 @@ export function HashrateChart({ series }: Props) {
                 {trendArrow} {Math.abs(trendPct).toFixed(0)}%
               </div>
             </div>
+            <div className="text-[12px] font-mono text-[var(--color-fg-dim)] mt-2">
+              {currentBpm.toFixed(1)} blocks / min — derived from difficulty
+              target
+            </div>
           </div>
           <div className="text-right">
             <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--color-fg-dim)] mb-1 font-semibold">
               30-min avg
             </div>
             <div className="text-[22px] font-mono font-bold">
-              {averageBpm.toFixed(2)}
+              {avgHpsValue}{" "}
+              <span className="text-[14px] text-[var(--color-fg-dim)] font-normal">
+                {avgHpsUnit}
+              </span>
             </div>
             <div className="text-[10px] font-mono text-[var(--color-fg-faint)] mt-1">
-              window: 30 min
+              {averageBpm.toFixed(2)} bpm
             </div>
           </div>
         </div>
@@ -74,6 +91,19 @@ export function HashrateChart({ series }: Props) {
       </div>
     </div>
   );
+}
+
+function formatHashrate(hps: number): { value: string; unit: string } {
+  if (!Number.isFinite(hps) || hps <= 0) return { value: "0", unit: "H/s" };
+  const units = ["H/s", "kH/s", "MH/s", "GH/s", "TH/s", "PH/s"];
+  let v = hps;
+  let i = 0;
+  while (v >= 1000 && i < units.length - 1) {
+    v /= 1000;
+    i++;
+  }
+  const value = v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+  return { value, unit: units[i] };
 }
 
 function Sparkline({ values }: { values: number[] }) {

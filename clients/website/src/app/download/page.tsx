@@ -65,6 +65,39 @@ export default function DownloadPage() {
             <DownloadButtons />
 
             <div className="mt-10 space-y-6">
+              <Note title="Windows says it's untrusted — that's expected">
+                <p className="text-[14.5px] leading-[1.6] text-[var(--color-fg-dim)] mb-3">
+                  The installer isn't code-signed yet, so Windows SmartScreen
+                  will warn that it's from an unknown publisher. This is the
+                  default for any new open-source app without an Authenticode
+                  cert. To install:
+                </p>
+                <ol className="list-decimal pl-6 space-y-1.5 text-[14px] leading-[1.6] text-[var(--color-fg-dim)] mb-3">
+                  <li>
+                    Click <span className="font-mono font-semibold">More info</span> on the
+                    SmartScreen popup.
+                  </li>
+                  <li>
+                    Click <span className="font-mono font-semibold">Run anyway</span>.
+                  </li>
+                  <li>
+                    If you'd rather verify the binary first, every release
+                    publishes a SHA-256 checksum file (
+                    <code className="font-mono text-[12.5px] text-[var(--color-teal)]">.sha256</code>
+                    ) next to the installer. Compare with{" "}
+                    <code className="font-mono text-[12.5px] text-[var(--color-teal)]">
+                      Get-FileHash Equium-Miner.msi
+                    </code>{" "}
+                    in PowerShell.
+                  </li>
+                </ol>
+                <p className="text-[13px] leading-[1.6] text-[var(--color-fg-faint)]">
+                  Code-signing is on the roadmap. macOS and Linux behave
+                  similarly without notarization / a signed appimage; the
+                  source is open if you'd rather build from scratch.
+                </p>
+              </Note>
+
               <Note title="What you need">
                 <ul className="list-disc pl-6 space-y-2 text-[14.5px] leading-[1.6] text-[var(--color-fg-dim)]">
                   <li>

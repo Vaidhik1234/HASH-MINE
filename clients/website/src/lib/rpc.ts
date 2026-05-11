@@ -254,6 +254,39 @@ export interface HashrateSeries {
   averageBpm: number;
   /** % change of second half vs first half of the window. */
   trendPct: number;
+  /** Network hashrate estimate in H/s, derived from currentBpm + current
+   * difficulty target. Each Wagner attempt produces a hash; the probability
+   * it lands under the target is target / 2^256. */
+  estimatedHps: number;
+  /** Window-average network hashrate (H/s). */
+  averageHps: number;
+}
+
+/**
+ * Estimate network hashrate from a block-arrival rate and the current target.
+ *
+ * Each Wagner solve produces a SHA-256 candidate; the probability it falls
+ * under the target is `target / 2^256`. So `network_attempts/sec =
+ * blocks/sec * 2^256 / target`. Returns hashes per second.
+ */
+export function estimateNetworkHashrate(
+  blocksPerMinute: number,
+  targetHex: string
+): number {
+  if (blocksPerMinute <= 0 || !targetHex) return 0;
+  try {
+    const target = BigInt("0x" + targetHex);
+    if (target === 0n) return 0;
+    const twoTo256 = 1n << 256n;
+    // bpm / 60 → blocks per second
+    // multiply by (2^256 / target) → attempts per second
+    // Stage the math so we don't lose precision: divide BigInt first,
+    // then convert to Number for the multiply.
+    const inverse = twoTo256 / target;
+    return (blocksPerMinute / 60) * Number(inverse);
+  } catch {
+    return 0;
+  }
 }
 
 /**
@@ -264,7 +297,11 @@ export async function fetchHashrateSeries(
   scan = 200,
   bucketCount = 30
 ): Promise<HashrateSeries> {
-  const blocks = await fetchAllMinedInRange(scan);
+  const [blocks, state] = await Promise.all([
+    fetchAllMinedInRange(scan),
+    fetchState().catch(() => null),
+  ]);
+  const targetHex = state?.currentTargetHex ?? "";
   const nowSec = Math.floor(Date.now() / 1000);
   const lastBucketStart = Math.floor(nowSec / 60) * 60;
   const buckets: number[] = new Array(bucketCount).fill(0);
@@ -306,5 +343,7 @@ export async function fetchHashrateSeries(
     currentBpm,
     averageBpm,
     trendPct,
+    estimatedHps: estimateNetworkHashrate(currentBpm, targetHex),
+    averageHps: estimateNetworkHashrate(averageBpm, targetHex),
   };
 }
