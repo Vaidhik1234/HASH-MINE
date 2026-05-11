@@ -34,7 +34,7 @@ use equium::state::{CONFIG_SEED, EquiumConfig, VAULT_SEED};
 use crate::state::MinerStats;
 use crate::AppState;
 
-type SharedState = State<'static, Arc<Mutex<AppState>>>;
+type SharedState<'a> = State<'a, Arc<Mutex<AppState>>>;
 
 const MAX_NONCES_PER_ROUND: u64 = 4096;
 const CU_LIMIT: u32 = 1_400_000;
@@ -83,7 +83,7 @@ struct StatusEvent {
 }
 
 #[tauri::command]
-pub fn miner_status(state: SharedState) -> MinerStatusPayload {
+pub fn miner_status(state: SharedState<'_>) -> MinerStatusPayload {
     let g = state.lock();
     MinerStatusPayload {
         running: g.miner.running,
@@ -92,7 +92,7 @@ pub fn miner_status(state: SharedState) -> MinerStatusPayload {
 }
 
 #[tauri::command]
-pub fn start_mining(state: SharedState, app: AppHandle) -> Result<MinerStatusPayload, String> {
+pub fn start_mining(state: SharedState<'_>, app: AppHandle) -> Result<MinerStatusPayload, String> {
     let (rpc_url, keypair_bytes) = {
         let g = state.lock();
         if g.miner.running {
@@ -137,7 +137,7 @@ pub fn start_mining(state: SharedState, app: AppHandle) -> Result<MinerStatusPay
 }
 
 #[tauri::command]
-pub fn stop_mining(state: SharedState) -> MinerStatusPayload {
+pub fn stop_mining(state: SharedState<'_>) -> MinerStatusPayload {
     let mut g = state.lock();
     if let Some(tx) = g.miner.stop_tx.take() {
         let _ = tx.send(());

@@ -15,7 +15,7 @@ use tauri::State;
 
 use equium::state::{CONFIG_SEED, EquiumConfig, VAULT_SEED};
 
-type SharedState = State<'static, Arc<Mutex<AppState>>>;
+type SharedState<'a> = State<'a, Arc<Mutex<AppState>>>;
 
 #[derive(Serialize, Clone)]
 pub struct Settings {
@@ -24,7 +24,7 @@ pub struct Settings {
 }
 
 #[tauri::command]
-pub fn get_settings(state: SharedState) -> Settings {
+pub fn get_settings(state: SharedState<'_>) -> Settings {
     let g = state.lock();
     Settings {
         rpc_url: g.settings.rpc_url.clone(),
@@ -33,7 +33,7 @@ pub fn get_settings(state: SharedState) -> Settings {
 }
 
 #[tauri::command]
-pub fn set_rpc_url(state: SharedState, url: String) -> Result<Settings, String> {
+pub fn set_rpc_url(state: SharedState<'_>, url: String) -> Result<Settings, String> {
     {
         let mut g = state.lock();
         g.settings.rpc_url = url.trim().to_string();
@@ -54,10 +54,10 @@ pub struct ProgramState {
 }
 
 #[tauri::command]
-pub fn get_program_state(state: SharedState) -> Result<ProgramState, String> {
+pub fn get_program_state(state: SharedState<'_>) -> Result<ProgramState, String> {
     let rpc_url = state.lock().settings.effective_rpc_url();
     let conn = RpcClient::new_with_commitment(rpc_url, CommitmentConfig::confirmed());
-    let program_id = Pubkey::from_str(equium::ID_STR).map_err(|e| e.to_string())?;
+    let program_id = equium::ID;
     let (config_pda, _) = Pubkey::find_program_address(&[CONFIG_SEED], &program_id);
     let acct = conn.get_account(&config_pda).map_err(|e| e.to_string())?;
     let mut data = acct.data.as_slice();
@@ -81,7 +81,7 @@ pub struct Balances {
 }
 
 #[tauri::command]
-pub fn get_wallet_balances(state: SharedState) -> Result<Balances, String> {
+pub fn get_wallet_balances(state: SharedState<'_>) -> Result<Balances, String> {
     let (rpc_url, pubkey, eqm_mint) = {
         let g = state.lock();
         let url = g.settings.effective_rpc_url();
@@ -125,7 +125,7 @@ fn get_program_state_inner(rpc_url: &str) -> anyhow::Result<ProgramState> {
         rpc_url.to_string(),
         CommitmentConfig::confirmed(),
     );
-    let program_id = Pubkey::from_str(equium::ID_STR)?;
+    let program_id = equium::ID;
     let (config_pda, _) = Pubkey::find_program_address(&[CONFIG_SEED], &program_id);
     let acct = conn.get_account(&config_pda).context("config not found")?;
     let mut data = acct.data.as_slice();

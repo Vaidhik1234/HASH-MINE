@@ -9,7 +9,7 @@ use anyhow::{anyhow, Context, Result};
 use argon2::{Algorithm, Argon2, Params, Version};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use solana_sdk::signature::{Keypair, Signer};
+use solana_sdk::signature::{Keypair, SeedDerivable, Signer};
 use std::path::Path;
 use std::sync::Arc;
 use tauri::State;
@@ -149,7 +149,8 @@ fn decrypt_keystore(store: &EncryptedKeystore, password: &str) -> Result<Keypair
     }
     let mut seed_arr = [0u8; 32];
     seed_arr.copy_from_slice(&seed);
-    let kp = Keypair::from_seed(&seed_arr).map_err(|e| anyhow!("keypair from seed: {e}"))?;
+    let kp =
+        Keypair::from_seed(&seed_arr).map_err(|e| anyhow!("keypair from seed: {e:?}"))?;
     if kp.pubkey().to_string() != store.pubkey {
         return Err(anyhow!("decrypted seed doesn't match stored pubkey"));
     }
@@ -205,10 +206,12 @@ pub struct WalletStatus {
     pub pubkey: Option<String>,
 }
 
-type SharedState = State<'static, Arc<Mutex<AppState>>>;
+// Tauri's `State<'r, T>` is borrowed from the request scope; the macro will
+// fail to compile if we lock the lifetime to `'static`.
+type SharedState<'a> = State<'a, Arc<Mutex<AppState>>>;
 
 #[tauri::command]
-pub fn wallet_status(state: SharedState) -> WalletStatus {
+pub fn wallet_status(state: SharedState<'_>) -> WalletStatus {
     let g = state.lock();
     if g.unlocked.is_some() {
         return WalletStatus {
@@ -230,7 +233,7 @@ pub fn wallet_status(state: SharedState) -> WalletStatus {
 
 #[tauri::command]
 pub fn create_wallet(
-    state: SharedState,
+    state: SharedState<'_>,
     password: String,
 ) -> Result<WalletStatus, String> {
     let kp = Keypair::new();
@@ -249,7 +252,7 @@ pub fn create_wallet(
 
 #[tauri::command]
 pub fn import_wallet(
-    state: SharedState,
+    state: SharedState<'_>,
     secret: String,
     password: String,
 ) -> Result<WalletStatus, String> {
@@ -269,7 +272,7 @@ pub fn import_wallet(
 
 #[tauri::command]
 pub fn unlock_wallet(
-    state: SharedState,
+    state: SharedState<'_>,
     password: String,
 ) -> Result<WalletStatus, String> {
     let store = {
@@ -287,7 +290,7 @@ pub fn unlock_wallet(
 }
 
 #[tauri::command]
-pub fn lock_wallet(state: SharedState) -> WalletStatus {
+pub fn lock_wallet(state: SharedState<'_>) -> WalletStatus {
     let mut g = state.lock();
     g.unlocked = None;
     if let Some(store) = load_store(&g.keystore_path()) {
@@ -304,7 +307,7 @@ pub fn lock_wallet(state: SharedState) -> WalletStatus {
 }
 
 #[tauri::command]
-pub fn forget_wallet(state: SharedState) -> WalletStatus {
+pub fn forget_wallet(state: SharedState<'_>) -> WalletStatus {
     let g = state.lock();
     let _ = std::fs::remove_file(g.keystore_path());
     drop(g);
@@ -316,7 +319,7 @@ pub fn forget_wallet(state: SharedState) -> WalletStatus {
 }
 
 #[tauri::command]
-pub fn export_secret(state: SharedState) -> Result<String, String> {
+pub fn export_secret(state: SharedState<'_>) -> Result<String, String> {
     let g = state.lock();
     match &g.unlocked {
         Some(kp) => Ok(bs58::encode(kp.to_bytes()).into_string()),
