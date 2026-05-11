@@ -91,17 +91,10 @@ export default function Page() {
       <H2 id="fund-your-wallet">Fund your wallet</H2>
       <P>
         Send a small amount of SOL to your generated address. The dashboard
-        shows the address with a copy button. During devnet, you can use{" "}
-        <a
-          href="https://faucet.solana.com/"
-          target="_blank"
-          rel="noreferrer noopener"
-          className="text-[var(--color-rose)] hover:underline"
-        >
-          faucet.solana.com
-        </a>{" "}
-        to get test SOL. On mainnet, send from any wallet (Phantom, Backpack,
-        a CEX withdrawal — the address is a regular Solana address).
+        shows the address with a copy button. The address is a regular Solana
+        address, so any wallet works — Phantom, Backpack, a CEX withdrawal,
+        or another wallet you already have funds in. Roughly 0.01 SOL covers
+        a few hours of mining at the current fee market.
       </P>
 
       <H2 id="start-mining">Start mining</H2>

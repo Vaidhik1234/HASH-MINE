@@ -89,7 +89,7 @@ export default function SendModal({
   };
 
   const explorerUrl = (sig: string) =>
-    `https://solscan.io/tx/${sig}?cluster=devnet`;
+    `https://solscan.io/tx/${sig}`;
 
   return (
     <div className="modal-shroud" onClick={onClose}>

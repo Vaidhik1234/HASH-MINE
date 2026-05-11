@@ -52,14 +52,14 @@ export function MiningPreview() {
                 </span>
                 <span className="ml-auto text-[10px] font-mono uppercase tracking-[0.15em] flex items-center gap-1.5 text-[var(--color-mint)]">
                   <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-mint)] live-dot" />
-                  live · devnet
+                  live · mainnet
                 </span>
               </div>
               <div className="text-[12px] leading-[1.7] font-mono p-5 overflow-hidden">
                 <TermLog>equium-miner online</TermLog>
                 <TermLog>{"  miner    "}<Teal>AgbS…AEQM</Teal></TermLog>
                 <TermLog>{"  program  "}<Teal>ZKGM…uEQM</Teal></TermLog>
-                <TermLog>{"  rpc      "}<Dim>https://api.devnet.solana.com</Dim></TermLog>
+                <TermLog>{"  rpc      "}<Dim>https://api.mainnet-beta.solana.com</Dim></TermLog>
                 <div className="h-3" />
                 <TermLog><Bold>round #18</Bold>{"   reward 25 EQM   target 0x40ffff…"}</TermLog>
                 <TermLog>{"  · try #1   "}<Dim>above target</Dim>{"   421ms   "}<Gold>1.2 H/s</Gold></TermLog>

@@ -15,7 +15,7 @@ const UPSTREAM_URL =
   process.env.SOLANA_RPC_URL ||
   process.env.HELIUS_RPC_URL ||
   process.env.NEXT_PUBLIC_RPC_URL ||
-  "https://api.devnet.solana.com";
+  "https://api.mainnet-beta.solana.com";
 
 // Allowed JSON-RPC methods the proxy will forward. Anything else returns 403.
 // This is the union of what the browser miner + explorer need.

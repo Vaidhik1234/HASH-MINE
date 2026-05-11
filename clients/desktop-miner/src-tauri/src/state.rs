@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct PersistedSettings {
-    /// Helius / custom RPC URL set by the user. Empty = default to mainnet/devnet.
+    /// Helius / custom RPC URL set by the user. Empty = default public endpoint.
     pub rpc_url: String,
-    /// Solana cluster name ("mainnet-beta", "devnet"). Default "devnet" until launch.
+    /// Solana cluster name ("mainnet-beta", "devnet"). Defaults to mainnet-beta.
     pub cluster: String,
 }
 
@@ -16,7 +16,7 @@ impl PersistedSettings {
     pub fn default_for_first_run() -> Self {
         Self {
             rpc_url: String::new(),
-            cluster: "devnet".into(),
+            cluster: "mainnet-beta".into(),
         }
     }
 
@@ -25,8 +25,8 @@ impl PersistedSettings {
             return self.rpc_url.clone();
         }
         match self.cluster.as_str() {
-            "mainnet-beta" | "mainnet" => "https://api.mainnet-beta.solana.com".into(),
-            _ => "https://api.devnet.solana.com".into(),
+            "devnet" => "https://api.devnet.solana.com".into(),
+            _ => "https://api.mainnet-beta.solana.com".into(),
         }
     }
 }

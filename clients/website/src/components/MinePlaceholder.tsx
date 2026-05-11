@@ -27,7 +27,7 @@ export function MinePlaceholder() {
 
         <p className="mt-6 text-[15px] leading-[1.6] text-[var(--color-fg-dim)] max-w-xl mx-auto">
           In the meantime, the CLI miner is fully working. Clone the repo,
-          build it, point it at devnet, and mine real $EQM.
+          build it, point it at mainnet, and mine real $EQM.
         </p>
 
         <div className="mt-9 flex flex-col sm:flex-row gap-3 justify-center">

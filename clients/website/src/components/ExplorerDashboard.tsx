@@ -75,7 +75,7 @@ export function ExplorerDashboard({
         <div>
           <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[var(--color-rose)] mb-2 font-semibold flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-mint)] live-dot" />
-            Live · Devnet
+            Live · Mainnet
           </div>
           <h1 className="text-[36px] md:text-[48px] font-black tracking-[-0.025em] leading-[1.05]">
             Explorer
@@ -249,7 +249,7 @@ export function ExplorerDashboard({
                     Miner
                   </div>
                   <a
-                    href={`https://explorer.solana.com/address/${b.winner}?cluster=devnet`}
+                    href={`https://explorer.solana.com/address/${b.winner}`}
                     target="_blank"
                     rel="noreferrer"
                     className="text-[13px] font-mono text-[var(--color-teal)] hover:text-[var(--color-rose)] transition-colors"
@@ -275,7 +275,7 @@ export function ExplorerDashboard({
                 </div>
                 <div className="col-span-12 md:col-span-3 text-left md:text-right">
                   <a
-                    href={`https://explorer.solana.com/tx/${b.sig}?cluster=devnet`}
+                    href={`https://explorer.solana.com/tx/${b.sig}`}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 text-[11px] font-mono text-[var(--color-fg-dim)] hover:text-[var(--color-rose)] transition-colors"
@@ -299,7 +299,7 @@ export function ExplorerDashboard({
         <div className="grid md:grid-cols-2 gap-x-8 gap-y-2.5 font-mono text-[12px]">
           <AddrRow label="Program" value="ZKGMUfxiRCXFPnqz9zgqAnuqJy15jk7fKbR4o6FuEQM" />
           <AddrRow label="Mint" value={state.mint} />
-          <AddrRow label="Cluster" value="devnet" />
+          <AddrRow label="Cluster" value="mainnet-beta" />
           <AddrRow label="PoW" value={`Equihash (${state.equihashN}, ${state.equihashK})`} />
         </div>
       </div>
@@ -365,7 +365,7 @@ function LeaderboardList({ rows }: { rows: LeaderboardEntry[] }) {
                 Miner
               </div>
               <a
-                href={`https://explorer.solana.com/address/${row.miner}?cluster=devnet`}
+                href={`https://explorer.solana.com/address/${row.miner}`}
                 target="_blank"
                 rel="noreferrer"
                 className="text-[13px] font-mono text-[var(--color-teal)] hover:text-[var(--color-rose)] transition-colors break-all"

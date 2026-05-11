@@ -36,8 +36,10 @@ use solana_sdk::transaction::Transaction;
 #[derive(Parser, Debug)]
 #[command(version, about = "Equium reference CPU miner")]
 struct Args {
-    /// RPC endpoint URL.
-    #[arg(long, default_value = "http://127.0.0.1:8899")]
+    /// RPC endpoint URL. Defaults to the public mainnet endpoint, which
+    /// rate-limits aggressively under sustained load — use a Helius / Triton
+    /// key for real mining.
+    #[arg(long, default_value = "https://api.mainnet-beta.solana.com")]
     rpc_url: String,
 
     /// Path to a keypair JSON for the miner wallet.

@@ -334,7 +334,7 @@ export function SendModal({
               ✓ Sent
             </div>
             <a
-              href={`https://solscan.io/tx/${status.sig}?cluster=devnet`}
+              href={`https://solscan.io/tx/${status.sig}`}
               target="_blank"
               rel="noreferrer noopener"
               className="font-mono text-[11px] text-[var(--color-teal)] hover:underline break-all"

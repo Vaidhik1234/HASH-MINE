@@ -118,7 +118,7 @@ export default async function OpenGraph() {
                 background: "#6ee7b7",
               }}
             />
-            <span>Live · Devnet</span>
+            <span>Live · Mainnet</span>
           </div>
         </div>
 

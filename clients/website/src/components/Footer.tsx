@@ -60,7 +60,7 @@ export function Footer() {
               { label: "X / Twitter", href: "https://x.com/EquiumEQM" },
               {
                 label: "Solana Explorer",
-                href: "https://explorer.solana.com/address/ZKGMUfxiRCXFPnqz9zgqAnuqJy15jk7fKbR4o6FuEQM?cluster=devnet",
+                href: "https://explorer.solana.com/address/ZKGMUfxiRCXFPnqz9zgqAnuqJy15jk7fKbR4o6FuEQM",
               },
             ]}
           />

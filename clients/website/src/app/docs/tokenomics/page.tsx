@@ -34,10 +34,11 @@ export default function Page() {
         and a mismatched address is the most reliable way to spot a fake.
       </P>
       <MintCard mint={MAINNET_MINT} />
-      <Callout tone="info" title="Pre-launch">
-        Mainnet is not yet live. The mint above has been created and reserved;
-        the on-chain program is currently active on devnet for testing. Watch
-        the explorer for the mainnet rollout date.
+      <Callout tone="info" title="Verify before buying">
+        Anyone can deploy a token called &quot;EQM&quot; on Solana. The address
+        above is the only mint that ever participates in this program. Always
+        check the mint address (not just the ticker) before swapping on any
+        DEX.
       </Callout>
 
       <H2 id="supply-breakdown">Supply breakdown</H2>

@@ -351,7 +351,7 @@ const ShareCard = ({
                 boxShadow: "0 0 10px #6ee7b7",
               }}
             />
-            Live · Devnet
+            Live · Mainnet
           </div>
         </div>
 

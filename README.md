@@ -25,7 +25,7 @@ Equium ($EQM) is a fair-launched token on Solana that you mine — like Bitcoin,
 | **Block reward** | 25 EQM, halving every ~8.6 months |
 | **Block time** | ~1 minute |
 | **PoW** | Equihash (96, 5) — runs on any CPU |
-| **Network** | Solana (devnet today, mainnet soon) |
+| **Network** | Solana mainnet |
 
 No VC allocation. No insider tokens. Every coin in circulation either came from the 10% premine (DEX liquidity + project treasury) or was mined block-by-block by someone running this code.
 
@@ -73,7 +73,7 @@ The CLI uses an existing Solana keypair file. Generate one with `solana-keygen n
 Pass `--max-blocks N` to stop after N successful mines, or omit it to run indefinitely. Run with `--help` for the full flag set.
 
 ```
-$ equium-miner --rpc-url https://api.devnet.solana.com --keypair my-wallet.json
+$ equium-miner --rpc-url https://mainnet.helius-rpc.com/?api-key=YOUR_KEY --keypair my-wallet.json
    round #42   reward 25 EQM   target 0x10ffff…
      · try #1   above target        587ms   1.7 H/s
      · try #2   above target        612ms   1.6 H/s
@@ -89,10 +89,10 @@ A free Helius key (see [docs/rpc](https://equium.xyz/docs/rpc)) is recommended f
 - Docs: [equium.xyz/docs](https://equium.xyz/docs)
 - X: [**@EquiumEQM**](https://x.com/EquiumEQM)
 - GitHub: [HannaPrints/equium](https://github.com/HannaPrints/equium)
-- Solana program: [`ZKGMUfxiRCXFPnqz9zgqAnuqJy15jk7fKbR4o6FuEQM`](https://explorer.solana.com/address/ZKGMUfxiRCXFPnqz9zgqAnuqJy15jk7fKbR4o6FuEQM?cluster=devnet) (devnet)
-- $EQM mint (mainnet): [`1MhvZzEe8gQ8Rb9CrT3Dn26Gkn9QRErzLMGkkTwveqm`](https://solscan.io/token/1MhvZzEe8gQ8Rb9CrT3Dn26Gkn9QRErzLMGkkTwveqm)
+- Solana program: [`ZKGMUfxiRCXFPnqz9zgqAnuqJy15jk7fKbR4o6FuEQM`](https://explorer.solana.com/address/ZKGMUfxiRCXFPnqz9zgqAnuqJy15jk7fKbR4o6FuEQM) — [verified build](https://verify.osec.io/status/ZKGMUfxiRCXFPnqz9zgqAnuqJy15jk7fKbR4o6FuEQM) via OtterSec
+- $EQM mint: [`1MhvZzEe8gQ8Rb9CrT3Dn26Gkn9QRErzLMGkkTwveqm`](https://solscan.io/token/1MhvZzEe8gQ8Rb9CrT3Dn26Gkn9QRErzLMGkkTwveqm)
 
-The mainnet mint is created and reserved; the on-chain program is currently active on devnet for testing. Always verify the mint address before buying on a DEX.
+Always verify the mint address (not just the ticker) before buying on a DEX — anyone can create a token called EQM.
 
 ## ✦ FAQ
 

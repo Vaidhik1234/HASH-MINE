@@ -30,7 +30,7 @@ const ITEMS = [
   },
   {
     q: "When does mainnet launch?",
-    a: "After external review of the on-chain program. Devnet is live for testing now. Follow @EquiumEQM for launch updates.",
+    a: "Mainnet is live. The program is deployed at ZKGMUfxiRCXFPnqz9zgqAnuqJy15jk7fKbR4o6FuEQM and the EQM mint is 1MhvZzEe8gQ8Rb9CrT3Dn26Gkn9QRErzLMGkkTwveqm. Follow @EquiumEQM for protocol updates.",
   },
 ];
 

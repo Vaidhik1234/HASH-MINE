@@ -48,7 +48,7 @@ export default function Page() {
         <li>
           In the Helius dashboard, open <Code>Endpoints</Code> and either use
           the default project key or click <Code>Create new</Code>. Select
-          Mainnet (or Devnet while pre-launch) and copy the full URL.
+          Mainnet and copy the full URL.
         </li>
         <li>
           Open the Equium Miner desktop app, click <Code>Settings</Code> in

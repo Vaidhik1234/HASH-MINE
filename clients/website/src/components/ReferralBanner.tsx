@@ -37,7 +37,7 @@ export function ReferralBanner() {
         <div className="text-[13px] text-[var(--color-fg-soft)] truncate">
           You arrived via a referral from{" "}
           <a
-            href={`https://explorer.solana.com/address/${ref}?cluster=devnet`}
+            href={`https://explorer.solana.com/address/${ref}`}
             target="_blank"
             rel="noreferrer"
             className="font-mono font-semibold text-[var(--color-rose-bright)] hover:underline"

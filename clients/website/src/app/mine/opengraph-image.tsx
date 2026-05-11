@@ -102,7 +102,7 @@ export default async function OpenGraph() {
                 background: "#6ee7b7",
               }}
             />
-            <span>Devnet</span>
+            <span>Mainnet</span>
           </div>
         </div>
 
