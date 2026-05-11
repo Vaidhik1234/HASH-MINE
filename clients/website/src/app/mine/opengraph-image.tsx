@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { fetchState } from "@/lib/rpc";
 
 export const runtime = "nodejs";
+export const revalidate = 60;
 export const alt = "Mine $EQM in your browser";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
