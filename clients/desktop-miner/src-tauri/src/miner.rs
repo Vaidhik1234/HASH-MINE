@@ -1,11 +1,11 @@
 //! Background mining loop driven from the Tauri frontend.
 //!
-//! Lifecycle: `start_mining` spawns a tokio task that polls config, runs the
-//! Equihash solver, off-chain checks the target, and submits `mine` txs using
-//! the unlocked keypair. Progress is mirrored into `AppState.miner.stats` and
-//! also emitted as Tauri events so the React UI can update live without
-//! polling.
+//! Runs on a dedicated OS thread, not a tokio task. The work is all blocking
+//! (Equihash solving + synchronous RPC), so there is no async benefit, and
+//! avoiding the runtime sidesteps Tauri 2 / tokio runtime-handle issues
+//! that were crashing the Windows build.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -24,7 +24,6 @@ use solana_sdk::system_program;
 use solana_sdk::sysvar;
 use solana_sdk::transaction::Transaction;
 use tauri::{AppHandle, Emitter, State};
-use tokio::sync::oneshot;
 
 use equihash_core::challenge::{build_input, solution_hash};
 use equihash_core::solver::solve;
@@ -65,7 +64,7 @@ struct BlockMinedEvent {
 
 #[derive(Serialize, Clone)]
 struct LogEvent {
-    level: &'static str, // "info" | "ok" | "err"
+    level: &'static str,
     message: String,
 }
 
@@ -92,7 +91,10 @@ pub fn miner_status(state: SharedState<'_>) -> MinerStatusPayload {
 }
 
 #[tauri::command]
-pub fn start_mining(state: SharedState<'_>, app: AppHandle) -> Result<MinerStatusPayload, String> {
+pub fn start_mining(
+    state: SharedState<'_>,
+    app: AppHandle,
+) -> Result<MinerStatusPayload, String> {
     let (rpc_url, keypair_bytes) = {
         let g = state.lock();
         if g.miner.running {
@@ -105,7 +107,7 @@ pub fn start_mining(state: SharedState<'_>, app: AppHandle) -> Result<MinerStatu
         (g.settings.effective_rpc_url(), kp.to_bytes())
     };
 
-    let (stop_tx, stop_rx) = oneshot::channel::<()>();
+    let stop_flag = Arc::new(AtomicBool::new(false));
 
     {
         let mut g = state.lock();
@@ -114,21 +116,42 @@ pub fn start_mining(state: SharedState<'_>, app: AppHandle) -> Result<MinerStatu
             started_at_unix_ms: now_unix_ms(),
             ..Default::default()
         };
-        g.miner.stop_tx = Some(stop_tx);
+        g.miner.stop_flag = Some(stop_flag.clone());
     }
 
     let state_arc: Arc<Mutex<AppState>> = (*state).clone();
     let app_handle = app.clone();
 
-    tokio::spawn(async move {
-        let result = tokio::task::spawn_blocking(move || {
-            run_mining_loop(state_arc.clone(), app_handle.clone(), rpc_url, keypair_bytes, stop_rx)
+    std::thread::Builder::new()
+        .name("equium-miner".into())
+        .spawn(move || {
+            // Catch panics so the UI surfaces a useful error rather than a
+            // silent process death.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run_mining_loop(
+                    state_arc.clone(),
+                    app_handle.clone(),
+                    rpc_url,
+                    keypair_bytes,
+                    stop_flag,
+                )
+            }));
+            if let Err(e) = result {
+                let msg = if let Some(s) = e.downcast_ref::<&str>() {
+                    (*s).to_string()
+                } else if let Some(s) = e.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "miner panicked".to_string()
+                };
+                emit_log(&app_handle, "err", format!("miner crashed: {msg}"));
+                emit_status(&app_handle, false, Some(msg.clone()));
+                let mut g = state_arc.lock();
+                g.miner.running = false;
+                g.miner.stop_flag = None;
+            }
         })
-        .await;
-        if let Err(e) = result {
-            log::error!("miner task panicked: {e}");
-        }
-    });
+        .map_err(|e| format!("failed to spawn miner thread: {e}"))?;
 
     Ok(MinerStatusPayload {
         running: true,
@@ -139,8 +162,8 @@ pub fn start_mining(state: SharedState<'_>, app: AppHandle) -> Result<MinerStatu
 #[tauri::command]
 pub fn stop_mining(state: SharedState<'_>) -> MinerStatusPayload {
     let mut g = state.lock();
-    if let Some(tx) = g.miner.stop_tx.take() {
-        let _ = tx.send(());
+    if let Some(flag) = g.miner.stop_flag.take() {
+        flag.store(true, Ordering::SeqCst);
     }
     g.miner.running = false;
     MinerStatusPayload {
@@ -154,39 +177,38 @@ fn run_mining_loop(
     app: AppHandle,
     rpc_url: String,
     keypair_bytes: [u8; 64],
-    mut stop_rx: oneshot::Receiver<()>,
+    stop_flag: Arc<AtomicBool>,
 ) {
     let miner_kp = match Keypair::from_bytes(&keypair_bytes) {
         Ok(k) => k,
         Err(e) => {
             emit_log(&app, "err", format!("invalid keypair: {e}"));
             mark_stopped(&state);
+            emit_status(&app, false, Some(format!("invalid keypair: {e}")));
             return;
         }
     };
     let miner = miner_kp.pubkey();
 
     let program_id = equium::ID;
-    let rpc = RpcClient::new_with_commitment(rpc_url.clone(), CommitmentConfig::confirmed());
+    let rpc =
+        RpcClient::new_with_commitment(rpc_url.clone(), CommitmentConfig::confirmed());
     let (config_pda, _) = Pubkey::find_program_address(&[CONFIG_SEED], &program_id);
     let (vault_pda, _) = Pubkey::find_program_address(&[VAULT_SEED], &program_id);
 
     emit_log(&app, "info", format!("starting miner — {}", short_pk(&miner)));
     emit_status(&app, true, None);
 
-    // Cache the mint's owning token program (classic SPL vs Token-2022).
-    let token_program_id = match {
-        fetch_config(&rpc, &config_pda).and_then(|cfg| {
-            rpc.get_account(&cfg.mint)
-                .map(|m| m.owner)
-                .map_err(|e| anyhow::anyhow!(e))
-        })
-    } {
+    let token_program_id = match fetch_config(&rpc, &config_pda).and_then(|cfg| {
+        rpc.get_account(&cfg.mint)
+            .map(|m| m.owner)
+            .map_err(|e| anyhow::anyhow!(e))
+    }) {
         Ok(p) => p,
         Err(e) => {
             emit_log(&app, "err", format!("could not read config/mint: {e}"));
             mark_stopped(&state);
-            emit_status(&app, false, Some(format!("config: {e}")));
+            emit_status(&app, false, Some(format!("rpc: {e}")));
             return;
         }
     };
@@ -197,15 +219,22 @@ fn run_mining_loop(
     let mut total_nonces: u64 = 0;
 
     loop {
-        if stop_rx.try_recv().is_ok() {
+        if stop_flag.load(Ordering::SeqCst) {
             break;
         }
 
         let cfg = match fetch_config(&rpc, &config_pda) {
             Ok(c) => c,
             Err(e) => {
-                emit_log(&app, "err", format!("rpc error reading config: {}", trim(&e.to_string(), 120)));
-                if sleep_or_stop(&mut stop_rx, Duration::from_millis(2500)) {
+                emit_log(
+                    &app,
+                    "err",
+                    format!(
+                        "rpc error reading config: {}",
+                        trim(&e.to_string(), 120)
+                    ),
+                );
+                if sleep_or_stop(&stop_flag, Duration::from_millis(2500)) {
                     break;
                 }
                 continue;
@@ -214,7 +243,7 @@ fn run_mining_loop(
 
         if !cfg.mining_open {
             emit_log(&app, "err", "mining is not open yet (vault unfunded)".into());
-            if sleep_or_stop(&mut stop_rx, Duration::from_secs(5)) {
+            if sleep_or_stop(&stop_flag, Duration::from_secs(5)) {
                 break;
             }
             continue;
@@ -223,12 +252,14 @@ fn run_mining_loop(
         if cfg.block_height != current_height {
             current_height = cfg.block_height;
             try_in_round = 0;
-            let payload = RoundEvent {
-                height: cfg.block_height,
-                reward_base: cfg.current_epoch_reward,
-                target_prefix_hex: hex::encode(&cfg.current_target[..4]),
-            };
-            let _ = app.emit("miner://round", payload);
+            let _ = app.emit(
+                "miner://round",
+                RoundEvent {
+                    height: cfg.block_height,
+                    reward_base: cfg.current_epoch_reward,
+                    target_prefix_hex: hex::encode(&cfg.current_target[..4]),
+                },
+            );
             emit_log(
                 &app,
                 "info",
@@ -294,12 +325,16 @@ fn run_mining_loop(
             emit_log(
                 &app,
                 "info",
-                format!("try #{} · above target · {}ms · {}", try_in_round, solve_ms, fmt_hashrate(hashrate)),
+                format!(
+                    "try #{} · above target · {}ms · {}",
+                    try_in_round,
+                    solve_ms,
+                    fmt_hashrate(hashrate)
+                ),
             );
             continue;
         }
 
-        // Below target — try to submit.
         match submit_mine(
             &rpc,
             &miner_kp,
@@ -316,7 +351,8 @@ fn run_mining_loop(
             Ok(sig) => {
                 let (blocks, total_base) = {
                     let mut g = state.lock();
-                    g.miner.stats.blocks_mined = g.miner.stats.blocks_mined.saturating_add(1);
+                    g.miner.stats.blocks_mined =
+                        g.miner.stats.blocks_mined.saturating_add(1);
                     g.miner.stats.total_earned_base = g
                         .miner
                         .stats
@@ -353,7 +389,7 @@ fn run_mining_loop(
             Err(e) => {
                 let reason = classify_submit_err(&e.to_string());
                 emit_log(&app, "err", format!("submit failed: {reason}"));
-                if sleep_or_stop(&mut stop_rx, Duration::from_millis(400)) {
+                if sleep_or_stop(&stop_flag, Duration::from_millis(400)) {
                     break;
                 }
             }
@@ -365,10 +401,10 @@ fn run_mining_loop(
     emit_log(&app, "info", "miner stopped".into());
 }
 
-fn sleep_or_stop(stop_rx: &mut oneshot::Receiver<()>, dur: Duration) -> bool {
+fn sleep_or_stop(stop_flag: &Arc<AtomicBool>, dur: Duration) -> bool {
     let deadline = Instant::now() + dur;
     loop {
-        if stop_rx.try_recv().is_ok() {
+        if stop_flag.load(Ordering::SeqCst) {
             return true;
         }
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -382,7 +418,7 @@ fn sleep_or_stop(stop_rx: &mut oneshot::Receiver<()>, dur: Duration) -> bool {
 fn mark_stopped(state: &Arc<Mutex<AppState>>) {
     let mut g = state.lock();
     g.miner.running = false;
-    g.miner.stop_tx = None;
+    g.miner.stop_flag = None;
 }
 
 fn emit_log(app: &AppHandle, level: &'static str, message: String) {
@@ -448,7 +484,8 @@ fn submit_mine(
     let cu_ix = ComputeBudgetInstruction::set_compute_unit_limit(cu_limit);
 
     let recent = rpc.get_latest_blockhash()?;
-    let tx = Transaction::new_signed_with_payer(&[cu_ix, ix], Some(&miner), &[miner_kp], recent);
+    let tx =
+        Transaction::new_signed_with_payer(&[cu_ix, ix], Some(&miner), &[miner_kp], recent);
     let sig = rpc.send_and_confirm_transaction(&tx)?;
     Ok(sig.to_string())
 }
@@ -465,9 +502,13 @@ fn classify_submit_err(s: &str) -> &'static str {
     if s.contains("custom program error: 0x1773") || s.contains("AboveTarget") {
         "above target"
     } else if s.contains("custom program error: 0x1772") || s.contains("InvalidEquihash") {
+        "invalid equihash solution"
+    } else if s.contains("custom program error: 0x1774") || s.contains("StaleChallenge") {
         "stale challenge"
     } else if s.contains("BlockhashNotFound") || s.contains("blockhash not found") {
         "blockhash expired"
+    } else if s.contains("insufficient lamports") {
+        "not enough SOL for fees"
     } else {
         "submit error"
     }
@@ -520,4 +561,3 @@ fn now_unix_ms() -> i64 {
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
 }
-

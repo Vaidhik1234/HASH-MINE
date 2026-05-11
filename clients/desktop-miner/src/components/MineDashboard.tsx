@@ -25,17 +25,17 @@ import {
   shortPk,
 } from "../lib/format";
 import { copyText } from "../lib/clipboard";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import SendModal from "./SendModal";
 
 type Props = {
   pubkey: string;
+  onOpenSettings: () => void;
 };
 
 type DashLog = LogEvent & { ts: number };
 const MAX_LOGS = 200;
 
-export default function MineDashboard({ pubkey }: Props) {
+export default function MineDashboard({ pubkey, onOpenSettings }: Props) {
   const [program, setProgram] = useState<ProgramState | null>(null);
   const [balances, setBalances] = useState<Balances | null>(null);
   const [stats, setStats] = useState<MinerStats | null>(null);
@@ -192,7 +192,7 @@ export default function MineDashboard({ pubkey }: Props) {
           onReveal={revealSecret}
           onSend={() => setSendOpen(true)}
         />
-        <NetworkCard program={program} />
+        <NetworkCard program={program} onOpenSettings={onOpenSettings} />
       </div>
 
       <ActivityCard
@@ -407,7 +407,13 @@ function WalletCard({
   );
 }
 
-function NetworkCard({ program }: { program: ProgramState | null }) {
+function NetworkCard({
+  program,
+  onOpenSettings,
+}: {
+  program: ProgramState | null;
+  onOpenSettings: () => void;
+}) {
   if (!program) {
     return (
       <div className="card stack">
@@ -472,7 +478,7 @@ function NetworkCard({ program }: { program: ProgramState | null }) {
       <div className="divider" />
       <button
         className="btn btn-ghost"
-        onClick={() => openUrl("https://equium.xyz/docs/rpc")}
+        onClick={onOpenSettings}
         style={{ alignSelf: "flex-start", padding: "0 10px" }}
       >
         Plug in your own RPC →

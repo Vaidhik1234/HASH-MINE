@@ -22,11 +22,10 @@ export default function SettingsModal({ onClose }: Props) {
     setSaving(true);
     setErr(null);
     try {
-      const updated = await setRpcUrl(draft);
-      setSettings(updated);
+      await setRpcUrl(draft);
+      onClose();
     } catch (e: any) {
       setErr(String(e));
-    } finally {
       setSaving(false);
     }
   };

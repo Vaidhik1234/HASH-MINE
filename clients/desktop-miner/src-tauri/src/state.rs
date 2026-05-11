@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use solana_sdk::signature::Keypair;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct PersistedSettings {
@@ -68,7 +70,9 @@ impl AppState {
 
 #[derive(Default)]
 pub struct MinerHandle {
-    pub stop_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    /// Atomic stop flag the OS thread polls. Replaces the old oneshot channel
+    /// so the mining loop has no tokio dependency.
+    pub stop_flag: Option<Arc<AtomicBool>>,
     pub stats: MinerStats,
     pub running: bool,
 }

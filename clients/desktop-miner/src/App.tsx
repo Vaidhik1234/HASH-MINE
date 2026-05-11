@@ -4,9 +4,11 @@ import SetupWizard from "./components/SetupWizard";
 import UnlockScreen from "./components/UnlockScreen";
 import MineDashboard from "./components/MineDashboard";
 import TopBar from "./components/TopBar";
+import SettingsModal from "./components/SettingsModal";
 
 export default function App() {
   const [status, setStatus] = useState<WalletStatus | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const refresh = async () => {
     try {
@@ -21,10 +23,12 @@ export default function App() {
     refresh();
   }, []);
 
+  const openSettings = () => setSettingsOpen(true);
+
   if (!status) {
     return (
       <div className="app">
-        <TopBar />
+        <TopBar onOpenSettings={openSettings} />
         <div className="main">
           <div className="empty">loading…</div>
         </div>
@@ -34,7 +38,11 @@ export default function App() {
 
   return (
     <div className="app">
-      <TopBar status={status} onLocked={refresh} />
+      <TopBar
+        status={status}
+        onLocked={refresh}
+        onOpenSettings={openSettings}
+      />
       <div className="main">
         {status.status === "needs-setup" && (
           <SetupWizard onDone={refresh} />
@@ -43,9 +51,15 @@ export default function App() {
           <UnlockScreen pubkey={status.pubkey} onUnlocked={refresh} />
         )}
         {status.status === "unlocked" && (
-          <MineDashboard pubkey={status.pubkey} />
+          <MineDashboard
+            pubkey={status.pubkey}
+            onOpenSettings={openSettings}
+          />
         )}
       </div>
+      {settingsOpen && (
+        <SettingsModal onClose={() => setSettingsOpen(false)} />
+      )}
     </div>
   );
 }
